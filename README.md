@@ -16,7 +16,8 @@ A driving routing API for Makkah built with **FastAPI**, backed by a self-hosted
 ```
 .
 ├── app.py                          # FastAPI application
-├── config.py                       # ORS base URL configuration
+├── config.py                       # ORS base URL and log dir configuration
+├── logging_config.py               # Loguru logging setup
 ├── models.py                       # Pydantic request/response models
 ├── test_app.py                     # Tests
 ├── pyproject.toml
