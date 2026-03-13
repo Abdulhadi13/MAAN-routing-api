@@ -7,6 +7,7 @@ from models import (
     HealthResponse,
     RouteResponse,
 )
+from config import ORS_BASE_URL
 
 app = FastAPI(
     title="MAAN Routing API",
@@ -17,8 +18,6 @@ app = FastAPI(
     ),
     version="1.0.0",
 )
-
-ORS_BASE_URL = "http://localhost:8082/ors/v2"
 
 # Load geofences once at startup
 _geofences_path = Path(__file__).parent / "data" / "geofences_to_avoid.geojson"
