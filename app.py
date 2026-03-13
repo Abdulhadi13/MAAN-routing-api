@@ -1,7 +1,6 @@
 from fastapi import FastAPI, HTTPException
 import httpx
 import json
-import logging
 from pathlib import Path
 from loguru import logger
 from models import (
@@ -10,45 +9,9 @@ from models import (
     RouteResponse,
 )
 from config import ORS_BASE_URL
+from logging_config import setup_logging
 
-
-class _InterceptHandler(logging.Handler):
-    """Route standard-library logging records into loguru."""
-
-    def emit(self, record: logging.LogRecord) -> None:
-        # Find the loguru level that matches the record's level name/number
-        try:
-            level = logger.level(record.levelname).name
-        except ValueError:
-            level = record.levelno
-
-        # Walk the call stack to find the original log site outside this handler
-        frame, depth = logging.currentframe(), 0
-        while frame and (depth == 0 or frame.f_code.co_filename == logging.__file__):
-            frame = frame.f_back
-            depth += 1
-
-        logger.opt(depth=depth, exception=record.exc_info).log(
-            level, record.getMessage()
-        )
-
-
-# Replace every handler on the root logger (and key uvicorn loggers) with ours
-logging.basicConfig(handlers=[_InterceptHandler()], level=logging.DEBUG, force=True)
-for _name in ("uvicorn", "uvicorn.error", "uvicorn.access", "fastapi"):
-    _log = logging.getLogger(_name)
-    _log.handlers = [_InterceptHandler()]
-    _log.propagate = False
-
-# Log to a rotating file — keeps last 7 days, compresses old files
-logger.add(
-    "logs/app.log",
-    rotation="1 day",
-    retention="7 days",
-    compression="zip",
-    level="DEBUG",
-    enqueue=True,  # non-blocking, safe for async code
-)
+setup_logging()
 
 
 app = FastAPI(
