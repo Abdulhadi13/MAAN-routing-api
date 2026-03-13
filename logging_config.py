@@ -1,6 +1,18 @@
 import logging
+import sys
 from loguru import logger
 from config import LOG_DIR
+
+
+def _get_port() -> str:
+    """Extract --port value from the CLI args uvicorn was started with."""
+    args = sys.argv
+    for i, arg in enumerate(args):
+        if arg == "--port" and i + 1 < len(args):
+            return args[i + 1]
+        if arg.startswith("--port="):
+            return arg.split("=", 1)[1]
+    return "8000"  # uvicorn default
 
 
 class _InterceptHandler(logging.Handler):
@@ -35,8 +47,9 @@ def setup_logging() -> None:
 
     # Log to a rotating file outside the project dir so watchfiles doesn't pick it up
     LOG_DIR.mkdir(parents=True, exist_ok=True)
+    port = _get_port()
     logger.add(
-        LOG_DIR / "app.log",
+        LOG_DIR / f"app_port_{port}.log",
         rotation="1 day",
         retention="7 days",
         compression="zip",
