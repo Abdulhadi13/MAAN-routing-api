@@ -216,3 +216,6 @@ ors-docker/graphs/*
 !ors-docker/graphs/.gitkeep
 ors-docker/logs/*
 !ors-docker/logs/.gitkeep
+
+# ignore large pbf files
+ors-docker/files/gcc-states-latest.osm.pbf

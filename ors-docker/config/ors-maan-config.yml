@@ -100,7 +100,7 @@ ors:
 #      attribution: openrouteservice.org, OpenStreetMap contributors
 #  ##### ORS engine settings #####
   engine:
-    source_file: /home/ors/files/makkah.osm.gz
+    source_file: /home/ors/files/gcc-states-latest.osm.pbf
 #    init_threads: 1
 #    preparation_mode: false
 #    graphs_root_path: ./graphs
