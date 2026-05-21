@@ -1,6 +1,6 @@
 # معن — MAAN Routing API
 
-A driving routing API for Makkah built with **FastAPI**, backed by a self-hosted **OpenRouteService (ORS)** instance. Routes automatically avoid restricted geofenced areas defined in `data/geofences_to_avoid.geojson`.
+A driving routing API for Makkah built with **FastAPI**, backed by a self-hosted **OpenRouteService (ORS)** instance. Routes automatically avoid restricted geofenced areas matched from PostGIS routing rules.
 
 ---
 
@@ -16,14 +16,16 @@ A driving routing API for Makkah built with **FastAPI**, backed by a self-hosted
 ```
 .
 ├── app.py                          # FastAPI application
-├── config.py                       # ORS base URL and log dir configuration
+├── config.py                       # ORS, database, and log dir configuration
+├── database.py                     # Raw SQL database access
 ├── logging_config.py               # Loguru logging setup
 ├── models.py                       # Pydantic request/response models
 ├── test_app.py                     # Tests
 ├── pyproject.toml
 ├── docker-compose.yml              # ORS container definition
 ├── data/
-│   └── geofences_to_avoid.geojson  # Restricted areas excluded from routes
+│   └── geofences_to_avoid.geojson  # Legacy/static geofence data
+├── database/                       # PostGIS init scripts and raw SQL queries
 └── ors-docker/
     ├── config/
     │   └── ors-maan-config.yml     # ORS configuration
@@ -50,7 +52,7 @@ mkdir -p ors-docker/config ors-docker/elevation_cache ors-docker/files ors-docke
 sudo chown -R 1000:1000 ors-docker/
 ```
 
-### 3. Start the ORS container
+### 3. Start the ORS and PostGIS containers
 
 ```bash
 docker compose up
@@ -58,7 +60,7 @@ docker compose up
 
 ORS will build the routing graphs from the OSM file on the **first run** — this takes less than a minute for the Makkah network. Subsequent starts reuse the cached graphs and are much faster.
 
-The ORS API will be available at `http://localhost:8082/ors/v2`.
+The ORS API will be available at `http://localhost:8082/ors/v2`. PostGIS will be available on `localhost:15432` with database `maan_routing`.
 
 ### 4. Install FastAPI dependencies
 
@@ -81,13 +83,17 @@ Interactive docs: `http://localhost:8000/docs`
 
 ## Configuration
 
-`config.py` holds the ORS service URL used by the FastAPI app:
+`config.py` holds the ORS service URL and PostGIS connection settings used by the FastAPI app. Database settings can be overridden with environment variables:
 
-```python
-ORS_BASE_URL = "http://localhost:8082/ors/v2"
-```
+| Variable            | Default        |
+| ------------------- | -------------- |
+| `POSTGRES_HOST`     | `localhost`    |
+| `POSTGRES_PORT`     | `15432`        |
+| `POSTGRES_DB`       | `maan_routing` |
+| `POSTGRES_USER`     | `postgres`     |
+| `POSTGRES_PASSWORD` | `postgres`     |
 
-Update this value if ORS is running on a different host or port.
+Update `ORS_BASE_URL` if ORS is running on a different host or port.
 
 ---
 
@@ -98,6 +104,7 @@ Update this value if ORS is running on a different host or port.
 Returns a simple status check.
 
 **Response**
+
 ```json
 { "status": "ok" }
 ```
@@ -106,15 +113,15 @@ Returns a simple status check.
 
 ### `POST /v1/route`
 
-Computes a driving route from an origin to a destination, with optional intermediate waypoints. All routes avoid the geofenced areas loaded from `data/geofences_to_avoid.geojson`.
+Computes a driving route from an origin to a destination, with optional intermediate waypoints. Routes avoid areas matched from active rows in `maan_routing.routing_rules` for the requested origin and destination.
 
 **Request body**
 
-| Field         | Type                        | Required | Description                                              |
-|---------------|-----------------------------|----------|----------------------------------------------------------|
-| `origin`      | `[longitude, latitude]`     | Yes      | Starting point in WGS-84 decimal degrees                 |
-| `destination` | `[longitude, latitude]`     | Yes      | End point in WGS-84 decimal degrees                      |
-| `waypoints`   | `[[lon, lat], ...]`         | No       | Ordered intermediate stops                               |
+| Field         | Type                    | Required | Description                              |
+| ------------- | ----------------------- | -------- | ---------------------------------------- |
+| `origin`      | `[longitude, latitude]` | Yes      | Starting point in WGS-84 decimal degrees |
+| `destination` | `[longitude, latitude]` | Yes      | End point in WGS-84 decimal degrees      |
+| `waypoints`   | `[[lon, lat], ...]`     | No       | Ordered intermediate stops               |
 
 > Each coordinate is snapped to the nearest road within **1000 m**.
 
@@ -134,4 +141,3 @@ Computes a driving route from an origin to a destination, with optional intermed
 **Response**
 
 A GeoJSON `FeatureCollection` containing the route geometry, total distance (meters), and estimated duration (seconds).
-

@@ -1,7 +1,7 @@
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI, HTTPException
 import httpx
-import json
-from pathlib import Path
 from loguru import logger
 from models import (
     RouteRequest,
@@ -9,9 +9,24 @@ from models import (
     RouteResponse,
 )
 from config import ORS_BASE_URL
+from database import (
+    RoutingRulesDatabaseError,
+    close_database_pool,
+    get_avoid_polygons_geometry,
+    open_database_pool,
+)
 from logging_config import setup_logging
 
 setup_logging()
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    await open_database_pool()
+    try:
+        yield
+    finally:
+        await close_database_pool()
 
 
 app = FastAPI(
@@ -22,17 +37,7 @@ app = FastAPI(
         "avoid restricted geofenced areas configured on the server."
     ),
     version="1.0.0",
-)
-
-# Load geofences once at startup
-_geofences_path = Path(__file__).parent / "data" / "geofences_to_avoid.geojson"
-logger.info("Loading geofences from {}", _geofences_path)
-with open(_geofences_path) as f:
-    _geofence_data = json.load(f)
-AVOID_POLYGONS = _geofence_data["geometry"]  # MultiPolygon geometry
-logger.info(
-    "Loaded {} geofence polygon(s)",
-    len(AVOID_POLYGONS.get("coordinates", [])),
+    lifespan=lifespan,
 )
 
 
@@ -74,12 +79,24 @@ async def get_route(request: RouteRequest):
 
     payload = {
         "coordinates": coordinates,
-        "options": {
-            "avoid_polygons": AVOID_POLYGONS
-        },
         "instructions": False,
-        "radiuses": [1000] # Snap points within 1000m of the provided coordinates, to allow for some flexibility in matching
+        "radiuses": [1000],  # Snap points within 1000m of the provided coordinates.
     }
+
+    try:
+        avoid_polygons = await get_avoid_polygons_geometry(
+            request.origin,
+            request.destination,
+        )
+    except RoutingRulesDatabaseError as e:
+        logger.error("Routing-rule lookup failed | error={}", e)
+        raise HTTPException(
+            status_code=503,
+            detail="Routing rules database unavailable",
+        )
+
+    if avoid_polygons is not None:
+        payload["options"] = {"avoid_polygons": avoid_polygons}
 
     async with httpx.AsyncClient() as client:
         try:
@@ -87,7 +104,7 @@ async def get_route(request: RouteRequest):
                 f"{ORS_BASE_URL}/directions/driving-car/geojson",
                 json=payload,
                 headers={"Content-Type": "application/json"},
-                timeout=30.0
+                timeout=30.0,
             )
             response.raise_for_status()
             logger.success(
@@ -102,11 +119,11 @@ async def get_route(request: RouteRequest):
             )
             raise HTTPException(
                 status_code=e.response.status_code,
-                detail=e.response.text
+                detail=e.response.text,
             )
         except httpx.RequestError as e:
             logger.error("ORS service unreachable | error={}", e)
             raise HTTPException(
                 status_code=503,
-                detail=f"ORS service unavailable: {str(e)}"
+                detail=f"ORS service unavailable: {str(e)}",
             )
