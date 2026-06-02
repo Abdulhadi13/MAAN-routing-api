@@ -70,10 +70,11 @@ def health():
 )
 async def get_route(request: RouteRequest):
     logger.info(
-        "Route request | origin={} destination={} waypoints={}",
+        "Route request | origin={} destination={} waypoints={} isRestricted={}",
         request.origin,
         request.destination,
         request.waypoints,
+        request.isRestricted,
     )
     coordinates = [request.origin] + (request.waypoints or []) + [request.destination]
 
@@ -83,20 +84,21 @@ async def get_route(request: RouteRequest):
         "radiuses": [1000],  # Snap points within 1000m of the provided coordinates.
     }
 
-    try:
-        avoid_polygons = await get_avoid_polygons_geometry(
-            request.origin,
-            request.destination,
-        )
-    except RoutingRulesDatabaseError as e:
-        logger.error("Routing-rule lookup failed | error={}", e)
-        raise HTTPException(
-            status_code=503,
-            detail="Routing rules database unavailable",
-        )
+    if request.isRestricted:
+        try:
+            avoid_polygons = await get_avoid_polygons_geometry(
+                request.origin,
+                request.destination,
+            )
+        except RoutingRulesDatabaseError as e:
+            logger.error("Routing-rule lookup failed | error={}", e)
+            raise HTTPException(
+                status_code=503,
+                detail="Routing rules database unavailable",
+            )
 
-    if avoid_polygons is not None:
-        payload["options"] = {"avoid_polygons": avoid_polygons}
+        if avoid_polygons is not None:
+            payload["options"] = {"avoid_polygons": avoid_polygons}
 
     async with httpx.AsyncClient() as client:
         try:

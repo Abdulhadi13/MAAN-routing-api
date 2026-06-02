@@ -8,7 +8,8 @@ EXAMPLE_PARAMETERS = {
     "waypoints": [
         [39.841362384648065, 21.388996441451567],
         [39.872728186529415, 21.40197484910052]
-    ]
+    ],
+    "isRestricted": True
 }
 
 
@@ -40,6 +41,14 @@ class RouteRequest(BaseModel):
             " Each waypoint is snapped to the nearest road within **1000 m**."
         ),
         examples=[[[39.841362384648065, 21.388996441451567], [39.872728186529415, 21.40197484910052]]],
+    )
+    isRestricted: bool = Field(
+        default=True,
+        description=(
+            "Whether to avoid restricted geofenced areas configured on the server. "
+            "Defaults to true."
+        ),
+        examples=[True],
     )
 
     model_config = {
