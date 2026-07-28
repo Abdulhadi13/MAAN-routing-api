@@ -1,0 +1,16 @@
+services:
+  api:
+    build:
+      target: development
+    command: ["fastapi", "dev", "app.py", "--host", "0.0.0.0", "--port", "8000"]
+    environment:
+      WATCHFILES_FORCE_POLLING: "true"
+    restart: "no"
+    volumes:
+      - ./app.py:/app/app.py:ro
+      - ./config.py:/app/config.py:ro
+      - ./database.py:/app/database.py:ro
+      - ./logging_config.py:/app/logging_config.py:ro
+      - ./models.py:/app/models.py:ro
+      - ./test_app.py:/app/test_app.py:ro
+      - ./database/script/queries/match-routing-rules-geojson.sql:/app/database/script/queries/match-routing-rules-geojson.sql:ro

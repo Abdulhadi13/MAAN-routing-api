@@ -2,12 +2,30 @@
 # Documentation and examples can be found on https://giscience.github.io/openrouteservice/run-instance/running-with-docker
 
 services:
+  # ----------------- MAAN Routing API configuration ----------------- #
+  api:
+    image: maan-routing-api:local
+    build:
+      context: .
+      target: production
+    restart: unless-stopped
+    depends_on:
+      ors-app:
+        condition: service_healthy
+      postgis:
+        condition: service_healthy
+    ports:
+      - "${API_PORT:-8000}:8000"
+    environment:
+      ORS_BASE_URL: http://ors-app:8082/ors/v2
+      POSTGRES_HOST: postgis
+      POSTGRES_PORT: "5432"
+      POSTGRES_DB: ${POSTGRES_DB:-maan_routing}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+
   # ----------------- ORS application configuration ------------------- #
   ors-app:
-    # Activate the following lines to build the container from the repository
-    # You have to add --build to the docker compose command to do so
-    build:
-      context: ./
     container_name: ors-app
     depends_on:
       postgis:
@@ -61,18 +79,13 @@ services:
     # Values will be overwritten if set in the 'environment' section.
     #env_file: ors-config.env
 
-    # ----------------- Healthcheck configuration ------------------- #
-    # The healthcheck is disabled by default. Uncomment the following lines to enable it.
-    # The healthcheck allows you to monitor the status of the ORS application.
-    # Be careful with long graph builds, as the healthcheck will fail and show 'unhealthy' during this time.
-    # This is especially useful if you run your ORS container in a production environment.
-    # healthcheck:
-    #  test: wget --no-verbose --tries=1 --spider http://localhost:8082/ors/v2/health || exit 1
-    #  start_period: 1m
-    #  interval: 10s
-    #  timeout: 2s
-    #  retries: 3
-    #  disable: false
+    # ORS can take time to build or load its routing graphs on first start.
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:8082/ors/v2/health || exit 1"]
+      start_period: 10m
+      interval: 15s
+      timeout: 5s
+      retries: 20
 
   # ----------------- PostGIS configuration ------------------- #
   postgis:
@@ -82,14 +95,14 @@ services:
     ports:
       - "15432:5432"
     environment:
-      POSTGRES_DB: maan_routing
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: ${POSTGRES_DB:-maan_routing}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
     volumes:
       - maan_routing_data:/var/lib/postgresql/data
       - ./database/script/init:/docker-entrypoint-initdb.d
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d maan_routing"]
+      test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\""]
       interval: 10s
       timeout: 5s
       retries: 5

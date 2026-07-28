@@ -1,7 +1,7 @@
 from pathlib import Path
 import os
 
-ORS_BASE_URL = "http://localhost:8082/ors/v2"
+ORS_BASE_URL = os.getenv("ORS_BASE_URL", "http://localhost:8082/ors/v2")
 LOG_DIR = Path.home() / ".local" / "share" / "maan-routing-api" / "logs"
 
 POSTGRES_HOST = os.getenv("POSTGRES_HOST", "localhost")

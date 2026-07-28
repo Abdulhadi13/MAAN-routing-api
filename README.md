@@ -7,7 +7,10 @@ A driving routing API for Makkah built with **FastAPI**, backed by a self-hosted
 ## Requirements
 
 - [Docker](https://docs.docker.com/get-docker/) (with the Compose plugin)
-- [uv](https://docs.astral.sh/uv/getting-started/installation/) (Python package manager)
+- At least 2 GB of memory available to ORS, as configured in `docker-compose.yml`
+
+Installing [uv](https://docs.astral.sh/uv/getting-started/installation/) on the
+host is optional. The API images include a pinned version of uv.
 
 ---
 
@@ -22,7 +25,10 @@ A driving routing API for Makkah built with **FastAPI**, backed by a self-hosted
 ├── models.py                       # Pydantic request/response models
 ├── test_app.py                     # Tests
 ├── pyproject.toml
-├── docker-compose.yml              # ORS container definition
+├── uv.lock
+├── Dockerfile                      # Production and development API image
+├── docker-compose.yml              # Production API, ORS, and PostGIS stack
+├── docker-compose.dev.yml          # Development API override with reload
 ├── data/
 │   └── geofences_to_avoid.geojson  # Legacy/static geofence data
 ├── database/                       # PostGIS init scripts and raw SQL queries
@@ -41,7 +47,9 @@ A driving routing API for Makkah built with **FastAPI**, backed by a self-hosted
 
 ### 1. Add the OSM source file
 
-`ors-docker/files/makkah.osm.gz` is already included. If you want to use a different OSM file, replace it and update `ors.engine.source_file` in `ors-docker/config/ors-maan-config.yml` accordingly.
+Place the configured OSM/PBF source in `ors-docker/files/`. If you use a
+different file, update `ors.engine.source_file` in `docker-compose.yml` or the
+corresponding ORS configuration.
 
 ### 2. Set directory permissions
 
@@ -52,48 +60,97 @@ mkdir -p ors-docker/config ors-docker/elevation_cache ors-docker/files ors-docke
 sudo chown -R 1000:1000 ors-docker/
 ```
 
-### 3. Start the ORS and PostGIS containers
+### 3. Configure environment values
 
 ```bash
-docker compose up
+cp .env.example .env
 ```
 
-ORS will build the routing graphs from the OSM file on the **first run** — this takes less than a minute for the Makkah network. Subsequent starts reuse the cached graphs and are much faster.
+The defaults are suitable for local development. Change `POSTGRES_PASSWORD`
+before deploying the stack to a shared or production host. `.env` is ignored by
+Git and is not copied into the API image.
 
-The ORS API will be available at `http://localhost:8082/ors/v2`. PostGIS will be available on `localhost:15432` with database `maan_routing`.
+### 4. Start the production stack
 
-### 4. Install FastAPI dependencies
+```bash
+docker compose up --build -d
+```
+
+Compose waits for PostGIS and ORS to report healthy before starting the API.
+ORS builds its routing graphs on the first run, which can take several minutes;
+subsequent starts reuse the cached graphs.
+
+Service URLs:
+
+- API: `http://localhost:8000`
+- Interactive API documentation: `http://localhost:8000/docs`
+- ORS: `http://localhost:8082/ors/v2`
+- PostGIS: `localhost:15432`
+
+Check status and follow logs with:
+
+```bash
+docker compose ps
+docker compose logs -f api
+```
+
+Stop the stack without deleting the PostGIS volume:
+
+```bash
+docker compose down
+```
+
+## Development
+
+The development override installs the `dev` dependency group and bind-mounts
+only the API source files and runtime SQL query. FastAPI reloads when those files
+change.
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
+```
+
+Run the test suite in the development image:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.dev.yml run --rm api pytest
+```
+
+When dependencies change, rebuild the API image:
+
+```bash
+docker compose build --no-cache api
+```
+
+For development without Docker, install uv and run:
 
 ```bash
 uv sync
+uv run fastapi dev app.py --host 0.0.0.0 --port 8000
 ```
 
-### 5. Run the API
-
-```bash
-fastapi dev app.py --host 0.0.0.0 --port 8000
-```
-
-- `--host 0.0.0.0` makes the API accessible from other machines on the network.
-- `--port` can be changed to any available port.
-
-Interactive docs: `http://localhost:8000/docs`
+The non-containerized API expects PostGIS on `localhost:15432` and ORS on
+`localhost:8082` unless their environment variables are overridden.
 
 ---
 
 ## Configuration
 
-`config.py` holds the ORS service URL and PostGIS connection settings used by the FastAPI app. Database settings can be overridden with environment variables:
+Copy `.env.example` to `.env` to configure Compose. The API reads its service
+addresses and database settings from environment variables:
 
-| Variable            | Default        |
-| ------------------- | -------------- |
-| `POSTGRES_HOST`     | `localhost`    |
-| `POSTGRES_PORT`     | `15432`        |
-| `POSTGRES_DB`       | `maan_routing` |
-| `POSTGRES_USER`     | `postgres`     |
-| `POSTGRES_PASSWORD` | `postgres`     |
+| Variable            | Host default                   | Compose value                  |
+| ------------------- | ------------------------------ | ------------------------------ |
+| `API_PORT`          | `8000`                         | Host port mapped to API `8000` |
+| `ORS_BASE_URL`      | `http://localhost:8082/ors/v2` | `http://ors-app:8082/ors/v2`   |
+| `POSTGRES_HOST`     | `localhost`                    | `postgis`                      |
+| `POSTGRES_PORT`     | `15432`                        | `5432`                         |
+| `POSTGRES_DB`       | `maan_routing`                 | `${POSTGRES_DB}`               |
+| `POSTGRES_USER`     | `postgres`                     | `${POSTGRES_USER}`             |
+| `POSTGRES_PASSWORD` | `postgres`                     | `${POSTGRES_PASSWORD}`         |
 
-Update `ORS_BASE_URL` if ORS is running on a different host or port.
+The Compose variables use the development-friendly values from `.env.example`
+when no `.env` file is present.
 
 ---
 
