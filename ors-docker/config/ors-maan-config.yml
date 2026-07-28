@@ -100,7 +100,7 @@ ors:
 #      attribution: openrouteservice.org, OpenStreetMap contributors
 #  ##### ORS engine settings #####
   engine:
-    source_file: /home/ors/files/gcc-states-latest.osm.pbf
+    source_file: /home/ors/files/mak_jed_taif.pbf
 #    init_threads: 1
 #    preparation_mode: false
 #    graphs_root_path: ./graphs
