@@ -89,7 +89,8 @@ services:
 
   # ----------------- PostGIS configuration ------------------- #
   postgis:
-    image: postgis/postgis:16-3.4
+    image: imresamu/postgis:16-3.6-bookworm
+    platform: linux/arm64
     container_name: postgis
     restart: unless-stopped
     ports:
